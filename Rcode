@@ -1,0 +1,560 @@
+PJI phage analysis 
+df <- read.csv('~/Desktop/Prophagefromclinicalisolates.csv')
+
+ df_done <- df[1:50,]
+ 
+ # Finish cleaning (remove extra info)
+ df_notdone <- df[51:nrow(df),]
+ df_notdone$Prophage <- stringr::str_split_fixed(df_notdone$Prophage," {1,}",5)[,5]
+ df_all <- rbind(df_done, df_notdone)
+ 
+ # Remove spaces here
+ df_all$Prophage <- trimws(df_all$Prophage)
+ 
+ # How many are unique?
+ unique(df_all$Prophage)
+ 
+ # Remove duplicates
+ df_notdup <- df_all[!(duplicated(df_all)),]
+ 
+ n_present <- table(df_notdup$Prophage)[order(table(df_notdup$Prophage))]
+ n_present
+ 
+ df_notdup[df_notdup$Prophage == 'MT880870.1 Staphylococcus phage PhiSepi-HH1, complete genome',]
+ df_notdup[df_notdup$Prophage =='NC_020490.2 Staphylococcus phage StB12, complete genome',]
+ df_notdup[df_notdup$Prophage=='KY653129.1 Staphylococcus phage IME1365_01, complete genome',]
+ df_notdup[df_notdup$Prophage=='BK031980.1 TPA_asm: Bacteriophage sp. isolate ctHJM1, partial genome',] 
+ df_notdup[df_notdup$Prophage=='NC_055046.1 Staphylococcus phage phiSa2wa_st5, complete genome',]
+ df_notdup[df_notdup$Prophage=='MF417921.1 Uncultured Caudovirales phage clone 10F_5, partial genome',]
+ df_notdup[df_notdup$Prophage=='KM389215.1 UNVERIFIED: Staphylococcus phage Phi05_1554 UV clone contig00002 genomic sequence',]
+ df_notdup[df_notdup$Prophage=='NC_048713.1 Staphylococcus aureus phage SA345ruMSSAST8, complete genome',]
+
+
+ df_notdup[df_notdup$Prophage=='NC_018284.1 Staphylococcus phage vB_SepiS-phiIPLA7, complete genome',]
+ df_notdup[df_notdup$Prophage=='MZ417353.1 UNVERIFIED: Staphylococcus phage PG-2021_93, complete genome',]
+ 
+
+CARD cleaning 
+
+#install.packages("ggplot2")
+#install.packages("reshape2")
+install.packages("viridis")
+library(ggplot2)
+library(reshape2)
+library(viridis)
+
+
+files <- list.files()
+
+# Start with CPA001
+df <- read.csv('cpa001.csv')
+df$cpa_name <- 'cpa001'
+
+# Add ARO term for each file
+for (file in files[2:55]) {
+  
+  df_file <- read.csv(file)
+  df_file$cpa_name <- strsplit(file, '.csv')[[1]]
+  df_file$X <- NULL
+  df_file$X.1 <- NULL
+  df <- rbind(df, df_file)
+  
+}
+
+# Keep only perfect hits
+df_perfect <- df[df$RGI.Criteria == 'Perfect',]
+
+df_mic<-read.csv("~/Desktop/PJI /MIC_11-20-23_tony.csv")
+df_mic$cpa_nbr <- sapply(strsplit(df_mic$CPA., 'CPA'), "[", 2)
+df_mic$cpa_nbr <- paste0('0',df_mic$cpa_nbr)
+
+df_mic$Tobramycin[df_mic$Tobramycin == ">256"] <- 256
+df_mic$Ciprofloxacin[df_mic$Ciprofloxacin == ">32"] <- 32
+
+df_mic$Tobramycin <- as.numeric(as.character(df_mic$Tobramycin))
+
+
+##### TOBRA ####
+df_amino <- df[grep('aminoglycoside', df$Drug.Class, ignore.case = TRUE),]
+
+unique(df_amino$ARO.Term)
+
+#write.csv(df_amino,"~/Desktop/PJI /pa_df/df_tobra.csv")
+
+# Creating a pivot table for the heatmap
+heatmap_data_tobra <- dcast(df_amino, ARO.Term ~ cpa_name, fun.aggregate = length)
+
+# Transforming the data for ggplot
+heatmap_data_long_tobra <- melt(heatmap_data_tobra, id.vars = "ARO.Term", 
+                                variable.name = "cpa_name", value.name = "count")
+
+heatmap_data_long_tobra$count <- as.factor(heatmap_data_long_tobra$count)
+
+# Plotting the heatmap
+ggplot(heatmap_data_long_tobra, aes(x = cpa_name, y = ARO.Term, fill = count)) +
+  geom_tile() +
+  scale_fill_manual(labels = c('0','1'), values = c('skyblue','royalblue3')) +
+  labs(title = "Heatmap of Unique ARO Terms by CPA", x = "CPA Name", y = "Unique ARO Terms") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+# Run this for S/R analysis
+df_mic_tobra <- df_mic[,c('cpa_nbr','EPIC','Tobramycin')] 
+
+heatmap_data_long_tobra$cpa_nbr <- sapply(strsplit(as.character(heatmap_data_long_tobra$cpa_name), 'cpa'), "[", 2)
+heatmap_data_long_tobra$cpa_nbr[nchar(heatmap_data_long_tobra$cpa_nbr) == 3] <- paste0('0', heatmap_data_long_tobra$cpa_nbr[nchar(heatmap_data_long_tobra$cpa_nbr) == 3])
+
+heatmap_mic_tobra <- merge(heatmap_data_long_tobra, df_mic_tobra, by = 'cpa_nbr', all.x = TRUE)
+
+heatmap_mic_tobra_small <- heatmap_mic_tobra[heatmap_mic_tobra$count == 1,]
+ggplot(heatmap_mic_tobra_small, aes(x = ARO.Term, group = EPIC, fill = EPIC)) +
+  geom_bar()  +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+ggplot(heatmap_mic_tobra_small, aes(x = ARO.Term, y = Tobramycin)) +
+  geom_boxplot(alpha = 0.5)  +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(heatmap_mic_tobra_small, aes(x = ARO.Term, y = Tobramycin)) +
+  geom_violin(alpha = 0.5) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+mic_tobra_lb4 <- heatmap_mic_tobra[heatmap_mic_tobra$ARO.Term == "AAC(6')-Ib4",]
+
+ggplot(mic_tobra_lb4, aes(x = count, y = Tobramycin)) +
+  geom_point() +
+  geom_boxplot(alpha = 0.5)  +
+  labs(x = "AAC(6')-Ib4 Presence", y = 'Tobra MIC') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+wilcox.test(Tobramycin ~ count, mic_tobra_lb4)
+
+mic_tobra_aadA <- heatmap_mic_tobra[heatmap_mic_tobra$ARO.Term == "aadA",]
+
+ggplot(mic_tobra_aadA, aes(x = count, y = Tobramycin)) +
+  geom_point() +
+  geom_boxplot(alpha = 0.5)  +
+  labs(x = "aadA Presence", y = 'Tobra MIC') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+wilcox.test(Tobramycin ~ count, mic_tobra_aadA)
+
+mic_tobra_aadA6 <- heatmap_mic_tobra[heatmap_mic_tobra$ARO.Term == "aadA6",]
+
+ggplot(mic_tobra_aadA6, aes(x = count, y = Tobramycin)) +
+  geom_point() +
+  geom_boxplot(alpha = 0.5)  +
+  labs(x = "aadA6 Presence", y = 'Tobra MIC') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+wilcox.test(Tobramycin ~ count, mic_tobra_aadA6)
+
+# Plot S/R analysis
+heatmap_mic_tobra$mic_color <- paste0(heatmap_mic_tobra$count, heatmap_mic_tobra$EPIC)
+heatmap_mic_tobra <- heatmap_mic_tobra[!is.na(heatmap_mic_tobra$EPIC),]
+
+ggplot(heatmap_mic_tobra, aes(x = cpa_name, y = ARO.Term, fill = mic_color)) +
+  geom_tile() +
+  scale_fill_manual(values = c('grey','grey','grey','grey','orange','black','red','green')) +
+  labs(title = "Heatmap of Unique ARO Terms by CPA", x = "CPA Name", y = "Unique ARO Terms") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+heatmap_mic_S <- heatmap_mic[heatmap_mic$EPIC == 'S',]
+heatmap_mic_R <- heatmap_mic[heatmap_mic$EPIC == 'R',]
+
+count_S <- tapply(as.numeric(as.character(heatmap_mic_S$count)), heatmap_mic_S$cpa_name, sum)
+count_R <-tapply(as.numeric(as.character(heatmap_mic_R$count)), heatmap_mic_R$cpa_name, sum)
+
+hist(count_S)
+hist(count_R)
+
+wilcox.test(count_S, count_R)
+
+
+#### Ciprofloxacin ####
+df_ciprofloxacin <- df[grep('fluoroquinolone', df$Drug.Class, ignore.case = TRUE),]
+unique(df_ciprofloxacin$ARO.Term)
+
+# Write CSV for Ciprofloxacin data
+# write.csv(df_ciprofloxacin, "~/Desktop/PJI /pa_df/df_ciprofloxacin.csv")
+
+# Creating a pivot table for the heatmap
+heatmap_data_ciprofloxacin <- dcast(df_ciprofloxacin, ARO.Term ~ cpa_name, fun.aggregate = length)
+
+# Transforming the data for ggplot
+heatmap_data_long_ciprofloxacin <- melt(heatmap_data_ciprofloxacin, id.vars = "ARO.Term", variable.name = "cpa_name", value.name = "count")
+heatmap_data_long_ciprofloxacin$count <- as.factor(heatmap_data_long_ciprofloxacin$count)
+heatmap_data_long_ciprofloxacin$count[heatmap_data_long_ciprofloxacin$count == 2] <- 1
+
+# Plotting the heatmap for Ciprofloxacin
+ggplot(heatmap_data_long_ciprofloxacin, aes(x = cpa_name, y = ARO.Term, fill = count)) +
+  geom_tile() +
+  scale_fill_manual(labels = c('0','1'), values = c('skyblue','royalblue3')) +
+  labs(title = "Heatmap of Unique ARO Terms by CPA", x = "CPA Name", y = "Unique ARO Terms") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+# Adjust cpa_nbr for merging
+heatmap_data_long_ciprofloxacin$cpa_nbr <- sapply(strsplit(as.character(heatmap_data_long_ciprofloxacin$cpa_name), 'cpa'), "[", 2)
+heatmap_data_long_ciprofloxacin$cpa_nbr[nchar(heatmap_data_long_ciprofloxacin$cpa_nbr) == 3] <- paste0('0', heatmap_data_long_ciprofloxacin$cpa_nbr[nchar(heatmap_data_long_ciprofloxacin$cpa_nbr) == 3])
+
+# Merge heatmap data with MIC data for Ciprofloxacin
+heatmap_mic_ciprofloxacin <- merge(heatmap_data_long_ciprofloxacin, df_mic, by = 'cpa_nbr', all.x = TRUE)
+heatmap_mic_ciprofloxacin$mic_color <- paste0(heatmap_mic_ciprofloxacin$count, heatmap_mic_ciprofloxacin$EPIC.4)
+heatmap_mic_ciprofloxacin <- heatmap_mic_ciprofloxacin[!is.na(heatmap_mic_ciprofloxacin$EPIC.4),]
+
+# Plotting the heatmap with MIC data for Ciprofloxacin
+ggplot(heatmap_mic_ciprofloxacin, aes(x = cpa_name, y = ARO.Term, fill = mic_color)) +
+  geom_tile() +
+  scale_fill_manual(values = c('grey','grey','grey','grey','orange','black','red','green')) +
+  labs(title = "Heatmap of Unique ARO Terms by CPA", x = "CPA Name", y = "Unique ARO Terms") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+heatmap_mic_S <- heatmap_mic[heatmap_mic$EPIC.4 == 'S',]
+heatmap_mic_R <- heatmap_mic[heatmap_mic$EPIC.4 == 'R',]
+
+count_S <- tapply(as.numeric(as.character(heatmap_mic_S$count)), heatmap_mic_S$cpa_name, sum)
+count_R <-tapply(as.numeric(as.character(heatmap_mic_R$count)), heatmap_mic_R$cpa_name, sum)
+
+hist(count_S)
+hist(count_R)
+
+## Plot S/R analysis
+# Preparing MIC data for Ciprofloxacin analysis with EPIC.4
+df_mic_ciprofloxacin <- df_mic[,c('cpa_nbr', 'EPIC.4', 'Ciprofloxacin')]
+df_mic_ciprofloxacin$Ciprofloxacin <- as.numeric(as.character(df_mic_ciprofloxacin$Ciprofloxacin))
+
+# Adjusting CPA numbers for consistency
+heatmap_data_long_ciprofloxacin$cpa_nbr <- sapply(strsplit(as.character(heatmap_data_long_ciprofloxacin$cpa_name), 'cpa'), "[", 2)
+heatmap_data_long_ciprofloxacin$cpa_nbr[nchar(heatmap_data_long_ciprofloxacin$cpa_nbr) == 3] <- paste0('0', heatmap_data_long_ciprofloxacin$cpa_nbr[nchar(heatmap_data_long_ciprofloxacin$cpa_nbr) == 3])
+
+# Merging heatmap data with Ciprofloxacin MIC data using EPIC.4
+heatmap_mic_ciprofloxacin <- merge(heatmap_data_long_ciprofloxacin, df_mic_ciprofloxacin, by = 'cpa_nbr', all.x = TRUE)
+
+# Filtering for ARO terms with count equal to 1 for detailed plots, using EPIC.4
+heatmap_mic_ciprofloxacin_small <- heatmap_mic_ciprofloxacin[heatmap_mic_ciprofloxacin$count == 1,]
+
+# Plotting the distribution of ARO Terms with count = 1 grouped by EPIC.4 values
+ggplot(heatmap_mic_ciprofloxacin_small, aes(x = ARO.Term, group = `EPIC.4`, fill = `EPIC.4`)) +
+  geom_bar() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Boxplot for ARO terms and Ciprofloxacin MIC values, using EPIC.4
+ggplot(heatmap_mic_ciprofloxacin_small, aes(x = ARO.Term, y = Ciprofloxacin)) +
+  geom_boxplot(alpha = 0.5) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(heatmap_mic_ciprofloxacin_small, aes(x = ARO.Term, y = Ciprofloxacin)) +
+  geom_violin(alpha = 0.5) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Example ARO term analysis for "qnrB" with EPIC.4 (replace "qnrB" with actual ARO terms relevant for Ciprofloxacin)
+mic_cipro_gyrA <- heatmap_mic_ciprofloxacin[heatmap_mic_ciprofloxacin$ARO.Term == "Pseudomonas aeruginosa gyrA conferring resistance to fluoroquinolones",]
+
+ggplot(mic_cipro_gyrA, aes(x = count, y = Ciprofloxacin)) +
+  geom_point() +
+  geom_boxplot(alpha = 0.5) +
+  labs(x = "Pseudomonas aeruginosa gyrA conferring resistance to fluoroquinolones Presence", y = 'Cipro MIC') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+wilcox.test(Ciprofloxacin ~ count, mic_cipro_gyrA)
+
+ggplot(mic_cipro_gyrA, aes(x = count, y = Ciprofloxacin, color = `EPIC.4`)) +
+  geom_point() +
+  geom_boxplot(alpha = 0.5) +
+  labs(x = "Pseudomonas aeruginosa gyrA conferring resistance to fluoroquinolones Presence", y = 'Cipro MIC') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Performing Wilcoxon test for "qnrB" ARO term using EPIC.4
+wilcox.test(Ciprofloxacin ~ count, data = mic_cipro_gyrA, paired = FALSE)
+
+
+
+# Example ARO term analysis for "qnrB" with EPIC.4 (replace "qnrB" with actual ARO terms relevant for Ciprofloxacin)
+mic_cipro_adeF <- heatmap_mic_ciprofloxacin[heatmap_mic_ciprofloxacin$ARO.Term == "adeF",]
+
+ggplot(mic_cipro_adeF, aes(x = count, y = Ciprofloxacin)) +
+  geom_point() +
+  geom_boxplot(alpha = 0.5) +
+  labs(x = "adeF", y = 'Cipro MIC') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+wilcox.test(Ciprofloxacin ~ count, mic_cipro_adeF)
+
+ggplot(mic_cipro_adeF, aes(x = count, y = Ciprofloxacin, color = `EPIC.4`)) +
+  geom_point() +
+  geom_boxplot(alpha = 0.5) +
+  labs(x = "adeF", y = 'Cipro MIC') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Performing Wilcoxon test for "qnrB" ARO term using EPIC.4
+wilcox.test(Ciprofloxacin ~ count, data = mic_cipro_adeF, paired = FALSE)
+# Adapt and repeat the process for other ARO terms as needed, considering EPIC.4
+
+
+
+
+
+#### staph - clindamycin####
+
+
+
+
+SACARD cleaning 
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(reshape2)
+
+# Read the CSV and Excel files
+csv_data <- read.csv("/Users/tonychang/Desktop/PJI /SA_data/SA_data_combined.csv")
+csv_data<-csv_data[,1:10]
+csv_data_MIC <- read.csv("/Users/tonychang/Desktop/PJI /Staph_MICdata/SA_data_cleaned_new.csv")
+
+csv_data_MIC <-csv_data_MIC[!duplicated(csv_data_MIC$orthrosamples),]
+
+# Merge the datasets based on 'orthrosamples' column
+merged_data <- merge(csv_data, csv_data_MIC, by = "orthrosamples", all.x = TRUE)
+
+print(colnames(merged_data))
+# Adjust the 'select()' function with the correct column names
+# For example, if the column names have suffixes like .x or .y, you would need to use those
+# The below is an example and you should replace 'Susceptibility.x' and 'ARO_Term.y' with the actual names
+merged_data_clinda <- select(merged_data, orthrosamples, ARO.Term , clinda_sus, clinda_mic, Drug.Class)
+
+merged_data_clinda <- merged_data_clinda[grep('macrolide', merged_data_clinda$Drug.Class, ignore.case = TRUE),]
+merged_data_clinda <- merged_data_clinda[grep('macrolide', merged_data_clinda$Drug.Class, ignore.case = TRUE),]
+# Pivot the data to get 'orthrosamples' on the x-axis and 'ARO Term' on the y-axis
+heatmap_data <- dcast(merged_data_clinda, ARO.Term ~ orthrosamples, value.var = "clinda_sus")
+
+# Create the heatmap
+p <- ggplot(melt(heatmap_data, id.vars = 'ARO.Term'), aes(x = variable, y = ARO.Term, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient(low = "yellow", high = "purple") +
+  theme_minimal() +
+  labs(x = "Orthrosamples", y = "ARO.Term", fill = "Susceptibility Value") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+# Display the heatmap
+print(p)
+
+# Assuming there's a need to visualize data based on a specific condition (e.g., a particular susceptibility score),
+# and assuming 'clinda_mic' is the column of interest for such analysis:
+
+ggplot(merged_data_clinda, aes(x = ARO.Term, group = clinda_sus, fill = clinda_sus)) +
+  geom_bar()  +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+
+
+# Boxplot for Clindamycin MIC values by ARO.Term
+ggplot(merged_data_clinda, aes(x = ARO.Term, y = clinda_mic)) +
+  geom_boxplot(alpha = 0.5) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# Analysis for specific resistance genes (e.g., "AAC(6')-Ib4", replace with relevant Clindamycin resistance genes)
+mic_clinda_specific_gene <- heatmap_mic_clinda[heatmap_mic_clinda$ARO.Term == "mphC",]
+
+###Erythromycin###
+# Load necessary libraries
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(reshape2)
+
+# Read the CSV files
+csv_data <- read.csv("/Users/tonychang/Desktop/PJI /SA_data/SA_data_combined.csv")
+csv_data <- csv_data[, 1:10]
+csv_data_MIC <- read.csv("/Users/tonychang/Desktop/PJI /Staph_MICdata/SA_data_cleaned_new.csv")
+
+# Remove duplicated entries based on 'orthrosamples'
+csv_data_MIC <- csv_data_MIC[!duplicated(csv_data_MIC$orthrosamples), ]
+
+# Merge the datasets based on 'orthrosamples' column
+merged_data <- merge(csv_data, csv_data_MIC, by = "orthrosamples", all.x = TRUE)
+
+# Select and adjust the data for Erythromycin analysis
+merged_data_erythromycin <- select(merged_data, orthrosamples, ARO.Term, erythromycin_sus, Erythromycin_mic, Drug.Class)
+
+# Filter for rows where 'Drug.Class' contains 'macrolide'
+merged_data_erythromycin <- merged_data_erythromycin[grep('macrolide', merged_data_erythromycin$Drug.Class, ignore.case = TRUE), ]
+
+# Pivot the data for heatmap visualization
+heatmap_data <- dcast(merged_data_erythromycin, ARO.Term ~ orthrosamples, value.var = "erythromycin_sus")
+
+# Create and display the heatmap
+p <- ggplot(melt(heatmap_data, id.vars = 'ARO.Term'), aes(x = variable, y = ARO.Term, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient(low = "yellow", high = "purple") +
+  theme_minimal() +
+  labs(x = "Orthrosamples", y = "ARO.Term", fill = "Susceptibility Value") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+print(p)
+
+# Bar plot for ARO.Term occurrences grouped by erythromycin susceptibility
+ggplot(merged_data_erythromycin, aes(x = ARO.Term, group = erythromycin_sus, fill = erythromycin_sus)) +
+  geom_bar() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Boxplot for Erythromycin MIC values by ARO.Term
+ggplot(merged_data_erythromycin, aes(x = ARO.Term, y = Erythromycin_mic)) +
+  geom_boxplot(alpha = 0.5) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Assuming 'mphC' is a relevant Erythromycin resistance gene, similar analysis as shown before
+# Adjust the gene name as necessary for your specific analysis
+
+
+PAprophagechitest
+files <- list.files()
+
+df <- tibble(phage = character(), cpa_name = character())
+
+# Add phage for each file
+for (file in files) {
+  
+  df_file <- read.csv(file, col.names = c('phage'), header = FALSE)
+  df_file$cpa_name <- strsplit(file, '.csv')[[1]]
+  df <- rbind(df, df_file)
+  
+}
+
+df$cpa_nbr <- sapply(strsplit(df$cpa_name , 'cpa'), "[", 2)
+df$cpa_nbr[nchar(df$cpa_nbr) == 3] <- paste0('0', df$cpa_nbr[nchar(df$cpa_nbr)== 3])
+
+# MIC
+
+df_mic<-read.csv("~/Desktop/PJI /MIC_11-20-23_tony.csv")
+df_mic$cpa_nbr <- sapply(strsplit(df_mic$CPA., 'CPA'), "[", 2)
+df_mic$cpa_nbr <- paste0('0',df_mic$cpa_nbr)
+df_mic <- df_mic[,c('cpa_nbr', 'EPIC','EPIC.4')]
+
+colnames(df_mic) <- c('cpa_nbr','tobra','cipro')
+df_merge<-merge(df,df_mic,by="cpa_nbr")
+
+df_merge$phage_code <- substr(df_merge$phage, start = 1, stop = 11)
+df_merge$phage_code <- sapply(strsplit(df_merge$phage_code, ':'), "[", 1)
+df_merge$phage_code <- trimws(df_merge$phage_code)
+
+pval <- tibble(phage = character(), abx = character(), pval = numeric()) 
+
+# MD8
+df_merge$MD8 <- df_merge$phage_code == "NC_031091.1"
+pvalue <- fisher.test(table(df_merge$MD8, df_merge$tobra))$p.value
+pval <- rbind(pval, tibble(phage = 'NC_031091.1', abx = 'tobra', pval = pvalue))
+
+#PP9W
+df_merge$PP9W <- df_merge$phage_code == "MZ773939.1"
+pvalue <- fisher.test(table(df_merge$PP9W, df_merge$tobra))$p.value
+pval <- rbind(pval, tibble(phage = 'MZ773939.1', abx = 'tobra', pval = pvalue))
+#NC_028657.1
+df_merge$NC_028657.1 <- df_merge$phage_code == "NC_028657.1"
+pvalue <- fisher.test(table(df_merge$NC_028657.1, df_merge$tobra))$p.value
+pval <- rbind(pval, tibble(phage = 'NC_028657.1', abx = 'tobra', pval = pvalue))
+#NC_016762.1
+df_merge$NC_016762.1 <- df_merge$phage_code == "NC_016762.1"
+pvalue <- fisher.test(table(df_merge$NC_016762.1, df_merge$tobra))$p.value
+pval <- rbind(pval, tibble(phage = 'NC_016762.1', abx = 'tobra', pval = pvalue))
+#MF490237.1
+df_merge$MF490237.1 <- df_merge$phage_code == "MF490237.1"
+pvalue <- fisher.test(table(df_merge$MF490237.1, df_merge$tobra))$p.value
+pval <- rbind(pval, tibble(phage = 'MF490237.1', abx = 'tobra', pval = pvalue))
+
+
+##KT887557.1 
+df_merge$KT887557.1 <- df_merge$phage_code == "KT887557.1"
+pvalue <- fisher.test(table(df_merge$KT887557.1, df_merge$tobra))$p.value
+pval <- rbind(pval, tibble(phage = 'KT887557.1', abx = 'tobra', pval = pvalue))
+##NC_016765.1 
+df_merge$NC_016765.1 <- df_merge$phage_code == "NC_016765.1"
+pvalue <- fisher.test(table(df_merge$NC_016765.1, df_merge$tobra))$p.value
+pval <- rbind(pval, tibble(phage = 'NC_016765.1', abx = 'tobra', pval = pvalue))
+##NC_030931.1
+df_merge$NC_030931.1 <- df_merge$phage_code == "NC_030931.1"
+pvalue <- fisher.test(table(df_merge$NC_030931.1, df_merge$tobra))$p.value
+pval <- rbind(pval, tibble(phage = 'NC_030931.1', abx = 'tobra', pval = pvalue))
+##KY707339.1
+df_merge$KY707339.1 <- df_merge$phage_code == "KY707339.1"
+pvalue <- fisher.test(table(df_merge$KY707339.1, df_merge$tobra))$p.value
+pval <- rbind(pval, tibble(phage = 'KY707339.1', abx = 'tobra', pval = pvalue))
+##NC_030909.1 
+df_merge$NC_030909.1 <- df_merge$phage_code == "NC_030909.1"
+pvalue <- fisher.test(table(df_merge$NC_030909.1, df_merge$tobra))$p.value
+pval <- rbind(pval, tibble(phage = 'NC_030909.1', abx = 'tobra', pval = pvalue))
+
+##cipro section## 
+# MD8
+df_merge$MD8 <- df_merge$phage_code == "NC_031091.1"
+pvalue <- fisher.test(table(df_merge$MD8, df_merge$cipro))$p.value
+pval <- rbind(pval, tibble(phage = 'NC_031091.1', abx = 'cipro', pval = pvalue))
+#PP9W
+df_merge$PP9W <- df_merge$phage_code == "MZ773939.1"
+pvalue <- fisher.test(table(df_merge$PP9W, df_merge$cipro))$p.value
+pval <- rbind(pval, tibble(phage = 'MZ773939.1', abx = 'cipro', pval = pvalue))
+#NC_028657.1
+df_merge$NC_028657.1 <- df_merge$phage_code == "NC_028657.1"
+pvalue <- fisher.test(table(df_merge$NC_028657.1, df_merge$cipro))$p.value
+pval <- rbind(pval, tibble(phage = 'NC_028657.1', abx = 'cipro', pval = pvalue))
+#NC_016762.1
+df_merge$NC_016762.1 <- df_merge$phage_code == "NC_016762.1"
+pvalue <- fisher.test(table(df_merge$NC_016762.1, df_merge$cipro))$p.value
+pval <- rbind(pval, tibble(phage = 'NC_016762.1', abx = 'cipro', pval = pvalue))
+#MF490237.1
+df_merge$MF490237.1 <- df_merge$phage_code == "MF490237.1"
+pvalue <- fisher.test(table(df_merge$MF490237.1, df_merge$cipro))$p.value
+pval <- rbind(pval, tibble(phage = 'MF490237.1', abx = 'cipro', pval = pvalue))
+
+
+##KT887557.1 
+df_merge$KT887557.1 <- df_merge$phage_code == "KT887557.1"
+pvalue <- fisher.test(table(df_merge$KT887557.1, df_merge$cipro))$p.value
+pval <- rbind(pval, tibble(phage = 'KT887557.1', abx = 'cipro', pval = pvalue))
+##NC_016765.1 
+df_merge$NC_016765.1 <- df_merge$phage_code == "NC_016765.1"
+pvalue <- fisher.test(table(df_merge$NC_016765.1, df_merge$cipro))$p.value
+pval <- rbind(pval, tibble(phage = 'NC_016765.1', abx = 'cipro', pval = pvalue))
+##NC_030931.1
+df_merge$NC_030931.1 <- df_merge$phage_code == "NC_030931.1"
+pvalue <- fisher.test(table(df_merge$NC_030931.1, df_merge$cipro))$p.value
+pval <- rbind(pval, tibble(phage = 'NC_030931.1', abx = 'cipro', pval = pvalue))
+##KY707339.1
+df_merge$KY707339.1 <- df_merge$phage_code == "KY707339.1"
+pvalue <- fisher.test(table(df_merge$KY707339.1, df_merge$cipro))$p.value
+pval <- rbind(pval, tibble(phage = 'KY707339.1', abx = 'cipro', pval = pvalue))
+##NC_030909.1 
+df_merge$NC_030909.1 <- df_merge$phage_code == "NC_030909.1"
+pvalue <- fisher.test(table(df_merge$NC_030909.1, df_merge$cipro))$p.value
+pval <- rbind(pval, tibble(phage = 'NC_030909.1', abx = 'cipro', pval = pvalue))
+
+
+##graph##
+library(ggplot2)
+
+ggplot(pval,aes(x=phage, y=pval,group=abx,color=abx))+
+  geom_point() +
+  labs(x='Prophage', y='pvalue',color='Antibiotic')+
+  ylim(c(0,1))+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
